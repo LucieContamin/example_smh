@@ -11,8 +11,10 @@ from SMHviz_layout.notes_definition import *
 from SMHviz_layout.tabs import make_tab_plots
 from SMHviz_layout.plottab_bar import make_plot_bar
 from SMHviz_layout.sidebar import make_sidebar
-from SMHviz_plot.figures import *
-from SMHviz_plot.utils_data import *
+#from SMHviz_plot.figures import *
+#from SMHviz_plot.utils_data import *
+from utils_data_2 import *
+from figures_2 import *
 
 from plot.prep_plot import *
 from settings import *
@@ -419,7 +421,7 @@ def peak_size_prep(scenario, location, round_tab):
     return prep_plot
 
 
-@cache.memoize(timeout=TIMEOUT)
+#@cache.memoize(timeout=TIMEOUT)
 def prep_pathogen_data(df, scenario, pathogen, k=1000):
     if df is not None:
         df_sample = sample_df(df, scenario, pathogen, k=k)
@@ -428,7 +430,7 @@ def prep_pathogen_data(df, scenario, pathogen, k=1000):
     return df_sample
 
 
-@cache.memoize(timeout=TIMEOUT)
+#@cache.memoize(timeout=TIMEOUT)
 def multi_pathogen_obs_prep(round_tab, target, location, patho_selected, time_series):
     # Prerequisite
     pathogen_name = constant_dict["pathogen_display_name"]
@@ -481,9 +483,10 @@ def multi_pathogen_obs_prep(round_tab, target, location, patho_selected, time_se
     return {"df_gs_data": df_gs_data, "peaks": peaks}
 
 
-@cache.memoize(timeout=TIMEOUT)
+#@cache.memoize(timeout=TIMEOUT)
 def multi_pathogen_combined_prep(location, target, scenario, other_scen, round_tab, k=10000):
     # Prerequisite
+    start = time.time()
     round_number = viz_setting[round_tab]["round_number"]
     pathogen = constant_dict["pathogen"].lower()
     pathogen_disp_name = constant_dict["pathogen_display_name"]
@@ -492,8 +495,12 @@ def multi_pathogen_combined_prep(location, target, scenario, other_scen, round_t
     other_pathogen_data = {}
     for patho in other_pathogen:
         rnd_n = pathogen_set[patho]["round"]
-        other_pathogen_data.update({patho: {"round_number": re.findall("\d+", rnd_n)[0]}})
+        other_pathogen_data.update({patho: {"round_number": re.findall(r"\d+", rnd_n)[0]}})
+    print(f'mpc_prep: prerequisites: {time.time() - start}')
+
     # Data
+    start = time.time()
+    p1 = time.time()
     df = query_proj_data(location, target, "sample", round_number)
     df = df[df["age_group"] == "0-130"]
     if df is not None and len(df) > 0:
@@ -502,29 +509,33 @@ def multi_pathogen_combined_prep(location, target, scenario, other_scen, round_t
         flu_ts = None
     scenario_int = list()
     for i in scenario:
-        scenario_int.append(int(i))
+        scenario_int.append(int(i)) 
     pathogen_data = {pathogen: {"data": df, "scenario_int": scenario_int, "time_series": flu_ts}}
     time_series_date = list()
     time_series_date.append(set(pathogen_data[pathogen]["time_series"]))
+
     for patho in other_pathogen:
         if other_scen[patho] is not None and len(other_scen[patho]) > 0:
             df_other = query_proj_data(location, target, "sample", other_pathogen_data[patho]["round_number"],
                                        path="./visualization/data-visualization/" + patho + "/")
             if df_other is not None:
+                # TODO: filter by age?
                 ts = list(df_other["target_end_date"].drop_duplicates())
                 time_series_date.append(set(ts))
             else:
                 ts = None
             other_scen_int = list()
             for i in other_scen[patho]:
-                other_scen_int.append(int(
-                    pathogen_set[patho]["scenario"]["dict"][i]))
+                other_scen_int.append(int(pathogen_set[patho]["scenario"]["dict"][i]))
         else:
             df_other = pd.DataFrame()
             ts = None
             other_scen_int = list()
         other_pathogen_data[patho].update({"data": df_other, "scenario_int": other_scen_int,
                                            "time_series": ts})
+    
+    p2 = time.time()
+    print(f'mpc_prep: loading datasets: {p2-p1}')
     time_series_date = set.intersection(*time_series_date)
     time_series_date = list(filter(None, list(time_series_date)))
     pathogen_info = pathogen_data | other_pathogen_data
@@ -533,16 +544,25 @@ def multi_pathogen_combined_prep(location, target, scenario, other_scen, round_t
         df_patho = pathogen_info[patho]["data"]
         if df_patho is not None and len(df_patho) > 0:
             df_patho = df_patho[df_patho["target_end_date"].isin(time_series_date)]
-        df_patho = prep_pathogen_data(df_patho, pathogen_info[patho]["scenario_int"], patho.lower(), k=k)
+        df_patho = prep_pathogen_data(df_patho, pathogen_info[patho]["scenario_int"], patho.lower(), k=k) # just a wrapper on sample_df from smhViz_plot utils
         pathogen_information.update({patho: {"dataframe": df_patho}})
+    print(f'mpc_prep: sampling: {time.time() - p2}')
+
+     # now the most expensive part
+    start = time.time()
     df_all = prep_multipat_plot_comb(pathogen_information, calc_mean=True)
+    print(f'mpc_prep: combine data: {time.time() - start}')
+
     # Observed data
+    start = time.time()
     obs_other_patho = list()
     for patho in other_pathogen:
         if other_scen[patho] is not None:
             obs_other_patho.append(pathogen_set[patho]["display_name"])
     obs_data = multi_pathogen_obs_prep(round_tab, target, location, obs_other_patho, time_series_date)
+    print(f'mpc_prep: observed data: {time.time() - start}')
     # Title & Subtitle
+    start = time.time()
     title_pathogen = list()
     title_other_pathogen = list()
     for patho in other_pathogen:
@@ -586,6 +606,7 @@ def multi_pathogen_combined_prep(location, target, scenario, other_scen, round_t
                  "target": viz_setting[round_tab]["target"][target],
                  "truth_tot_legend": pathogen_disp_name + " + " + " + ".join(title_other_pathogen).title() +
                  " Observed Data"}
+    print(f'mpc_prep: the rest: {time.time() - start}')
     return prep_plot
 
 
@@ -631,7 +652,7 @@ def draw_scenario_plot(scenario, location, target, ui, age_group, ens_check, rou
 
 
 @cache.memoize(timeout=TIMEOUT)
-def draw_spaghetti_plot(scenario, location, target, age_group, n_sample, med_plot, round_tab):
+def draw_spaghetti_plot(scenario, location, target, age_group, n_sample, med_plot, round_tab, band_depth_limit):
     prep_plot = spaghetti_plot_prep(scenario, location, target, age_group, n_sample, med_plot, round_tab)
     if (prep_plot["df"] is None) or (len(prep_plot["df"]) == 0):
         fig = fig_error_message("No projection to display for the target: " + prep_plot["y_title"] + ", location: " +
@@ -644,13 +665,13 @@ def draw_spaghetti_plot(scenario, location, target, age_group, n_sample, med_plo
                                       color_dict=prep_plot["color_dict"], opacity=prep_plot["opacity"],
                                       add_median=True, title=prep_plot["title"], x_title="Epiweek",
                                       subplot_titles=prep_plot["subplot_titles"], y_title=prep_plot["y_title"],
-                                      legend_dict=constant_dict["model_name"])
+                                      legend_dict=constant_dict["model_name"], band_depth_limit=band_depth_limit)
         else:
             fig = make_spaghetti_plot(prep_plot["df"], subplot=True, subplot_col="scenario_id",
                                       color_dict=prep_plot["color_dict"], opacity=prep_plot["opacity"],
                                       title=prep_plot["title"], subplot_titles=prep_plot["subplot_titles"],
                                       y_title=prep_plot["y_title"], x_title="Epiweek",
-                                      legend_dict=constant_dict["model_name"])
+                                      legend_dict=constant_dict["model_name"], band_depth_limit=band_depth_limit)
         fig.add_annotation(
             x=0, y=1, xref="paper", yref="paper", text="&#9432;", font=dict(size=32), arrowcolor="white",
             arrowhead=False,
@@ -741,8 +762,9 @@ def draw_peak_size(scenario, location, round_tab):
     return fig
 
 
-@cache.memoize(timeout=TIMEOUT)
+#@cache.memoize(timeout=TIMEOUT)
 def draw_multi_pathogen_comb_plot(location, target, scenario, other_scen, round_tab, err_bar):
+    real_start = time.perf_counter()
     if None in list(other_scen.values()) and len(other_scen.values()) > 0:
         scen_other_len = list(filter(None, list(other_scen.values())))
         if len(scen_other_len) > 0:
@@ -754,12 +776,19 @@ def draw_multi_pathogen_comb_plot(location, target, scenario, other_scen, round_
     if len(scenario) < 1 and scen_other_len < 1:
         fig = fig_error_message("No scenario selected to display")
     else:
+        start = time.time()
         color = constant_dict["pathogen_color_dict"]
         other_pathogen = list()
         for patho in other_scen.keys():
             if other_scen[patho] is not None and len(other_scen[patho]) >= 1:
                 other_pathogen.append(viz_setting[round_tab]["multi-pathogen_plot"]["pathogen"][patho]["display_name"])
+        print(f'prepping labels: {time.time() - start}')
+       
+        start = time.time()
         prep_plot = multi_pathogen_combined_prep(location, target, scenario, other_scen, round_tab)
+        print(f'total mpc_prep time: {time.time() - start}')
+
+        start = time.time()
         df_all = prep_plot["df_all"]
         if prep_plot["df_gs_data"] is not None:
             truth_data = prep_plot["df_gs_data"]
@@ -802,6 +831,8 @@ def draw_multi_pathogen_comb_plot(location, target, scenario, other_scen, round_
                       "<br>Flu & COVID-19 hospitalization data comes from the `Weekly reported state-level incident<br>"
                       " hospitalizations`, based on HHS COVID and Flu reporting system; and RSV comes from the <br>"
                       "RSV-NET surveillance system.")
+        print(f'plotting: {time.time() - start}')
+        print(f'total time: {time.perf_counter() - real_start}')
     return fig
 
 
@@ -928,7 +959,7 @@ def render_plot_tab_content(plot_tab, round_tab):
                 patho_round = pathogen_information["round_display"]
             else:
                 patho_round = pathogen_information["round"]
-                patho_round = int(re.sub("\D", "", patho_round))
+                patho_round = int(re.sub(r"\D", "", patho_round))
             patho_website = pathogen_information["website"]
             patho_dic = {"scenario": patho_scen_dict, "default_sel": def_scen, "round_int": patho_round,
                          "name": pathogen_information["display_name"], "website": patho_website}
@@ -1021,9 +1052,9 @@ def scenario_plot(location, target, scenario, ui, age_group, round_tab, ens_chec
     Input("sample-slider", "value"),
     Input("median-checkbox", "value"),
     Input("tabs-round", "value"))
-def spaghetti_plot(location, target, scenario, age_group, n_sample, med_plot, round_tab):
+def spaghetti_plot(location, target, scenario, age_group, n_sample, med_plot, round_tab, band_depth_limit=None):
     tic = time.perf_counter()
-    fig = draw_spaghetti_plot(scenario, location, target, age_group, n_sample, med_plot, round_tab)
+    fig = draw_spaghetti_plot(scenario, location, target, age_group, n_sample, med_plot, round_tab, band_depth_limit)
     toc = time.perf_counter()
     print(f"Draw Spaghetti plot in {toc - tic:0.4f} seconds")
     return fig
@@ -1096,6 +1127,7 @@ def peak_time_plot(scenario, location, round_tab):
     Input("other-scenario_flu", "value"),
     Input("comb_err_radio", "value"), prevent_initial_call=True)
 def multipat_comb_plot(scenario, location, target, round_tab, other_scen1, other_scen2, err_bar):
+    print(location, target, scenario, other_scen1, other_scen2, round_tab, err_bar)
     tic = time.perf_counter()
     other_scen = {"covid-19": other_scen1, "flu": other_scen2}
     fig = draw_multi_pathogen_comb_plot(location, target, scenario, other_scen, round_tab, err_bar)
@@ -1104,6 +1136,6 @@ def multipat_comb_plot(scenario, location, target, round_tab, other_scen1, other
     return fig
 
 
-# Run ---
+'''# Run ---
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port="3838", debug=False)
+    app.run(host="0.0.0.0", port="3838", debug=False)'''
