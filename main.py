@@ -252,7 +252,7 @@ def spaghetti_plot_prep(scenario, location, target, age_group, n_sample, med_plo
 
 @cache.memoize(timeout=TIMEOUT)
 def specific_plot_prep(model, location, target_type, ui, age_group, round_tab):
-
+    # Prerequisite
     round_number = viz_setting[round_tab]["round_number"]
     target_list = viz_setting[round_tab]["target"]
     scen_info = scenario_info(scen_file, round_number)
@@ -266,7 +266,7 @@ def specific_plot_prep(model, location, target_type, ui, age_group, round_tab):
     else:
         quant_sel = ui_dict[ui]
     title = "Model Specific Projections, by Scenario - " + round_tab + " - " + str(location)
-
+    # Data
     df_all = prep_model_data(sel_target, location, model, quant_sel, age_group, round_number, invert_team_name)
     df_gs_all = prep_gs_data(sel_target, location, age_group, viz_setting, round_tab)
     if df_all is None or len(df_all) == 0:
@@ -297,7 +297,7 @@ def specific_plot_prep(model, location, target_type, ui, age_group, round_tab):
 
 @cache.memoize(timeout=TIMEOUT)
 def comparison_plot_prep(location, age_group, multi_ref, round_tab):
-
+    # Prerequisite
     round_number = viz_setting[round_tab]["round_number"]
     target_list = viz_setting[round_tab]["target"]
     ens_name = viz_setting[round_tab]["ensemble"]["default"]
@@ -319,7 +319,7 @@ def comparison_plot_prep(location, age_group, multi_ref, round_tab):
     else:
         sel_target = [x for x in list(target_list.keys()) if re.findall("inc", x)]
         method = model_cum_data
-
+    # Data
     df = prep_model_data(sel_target, location, None, quant_sel, age_group, round_number,
                          None)
     if len(df) == 0:
@@ -341,7 +341,7 @@ def comparison_plot_prep(location, age_group, multi_ref, round_tab):
                  location + "); Projection Wk 1-" + str(max_ens_week))
         df = df.sort_values(["scen_comp", "model_name"])
         subplot_title = list(df["comparison"].unique())
-
+        # Plot
         prep_plot = {
             "df": df, "ens_name": ens_name, "comparison": comparison_reference, "title": title,
             "subplot_title": subplot_title}
@@ -503,7 +503,7 @@ def multi_pathogen_combined_prep(location, target, scenario, other_scen, round_t
         flu_ts = None
     scenario_int = list()
     for i in scenario:
-        scenario_int.append(int(i)) 
+        scenario_int.append(int(i))
     pathogen_data = {pathogen: {"data": df, "scenario_int": scenario_int, "time_series": flu_ts}}
     time_series_date = list()
     time_series_date.append(set(pathogen_data[pathogen]["time_series"]))
@@ -536,7 +536,7 @@ def multi_pathogen_combined_prep(location, target, scenario, other_scen, round_t
         df_patho = pathogen_info[patho]["data"]
         if df_patho is not None and len(df_patho) > 0:
             df_patho = df_patho[df_patho["target_end_date"].isin(time_series_date)]
-        df_patho = prep_pathogen_data(df_patho, pathogen_info[patho]["scenario_int"], patho.lower(), k=k) # just a wrapper on sample_df from smhViz_plot utils
+        df_patho = prep_pathogen_data(df_patho, pathogen_info[patho]["scenario_int"], patho.lower(), k=k)
         pathogen_information.update({patho: {"dataframe": df_patho}})
     df_all = prep_multipat_plot_comb(pathogen_information, calc_mean=True)
 
@@ -591,7 +591,6 @@ def multi_pathogen_combined_prep(location, target, scenario, other_scen, round_t
                  "target": viz_setting[round_tab]["target"][target],
                  "truth_tot_legend": pathogen_disp_name + " + " + " + ".join(title_other_pathogen).title() +
                  " Observed Data"}
-
     return prep_plot
 
 
@@ -1104,7 +1103,6 @@ def peak_time_plot(scenario, location, round_tab):
     Input("other-scenario_flu", "value"),
     Input("comb_err_radio", "value"), prevent_initial_call=True)
 def multipat_comb_plot(scenario, location, target, round_tab, other_scen1, other_scen2, err_bar):
-    print(location, target, scenario, other_scen1, other_scen2, round_tab, err_bar)
     tic = time.perf_counter()
     other_scen = {"covid-19": other_scen1, "flu": other_scen2}
     fig = draw_multi_pathogen_comb_plot(location, target, scenario, other_scen, round_tab, err_bar)
@@ -1113,6 +1111,6 @@ def multipat_comb_plot(scenario, location, target, round_tab, other_scen1, other
     return fig
 
 
-'''# Run ---
+# Run ---
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port="3838", debug=False)'''
+    app.run(host="0.0.0.0", port="3838", debug=False)
