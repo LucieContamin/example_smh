@@ -513,7 +513,6 @@ def multi_pathogen_combined_prep(location, target, scenario, other_scen, round_t
             df_other = query_proj_data(location, target, "sample", other_pathogen_data[patho]["round_number"],
                                        path="./visualization/data-visualization/" + patho + "/")
             if df_other is not None:
-                # TODO: filter by age?
                 ts = list(df_other["target_end_date"].drop_duplicates())
                 time_series_date.append(set(ts))
             else:
