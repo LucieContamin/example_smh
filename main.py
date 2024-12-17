@@ -636,6 +636,11 @@ def draw_scenario_plot(scenario, location, target, ui, age_group, ens_check, rou
 
 @cache.memoize(timeout=TIMEOUT)
 def draw_spaghetti_plot(scenario, location, target, age_group, n_sample, med_plot, round_tab, band_depth_limit):
+    '''
+    :param band_depth_limit: if this parameter is set to a value between 0 and 1, then the plot will create
+    a shaded "envelope" around the trajectories with band depths greater than or equal to band_depth_limit
+    NOTE: this parameter should be set by the top-level function spaghetti_plot()
+    '''
     prep_plot = spaghetti_plot_prep(scenario, location, target, age_group, n_sample, med_plot, round_tab)
     if (prep_plot["df"] is None) or (len(prep_plot["df"]) == 0):
         fig = fig_error_message("No projection to display for the target: " + prep_plot["y_title"] + ", location: " +
@@ -1028,6 +1033,10 @@ def scenario_plot(location, target, scenario, ui, age_group, round_tab, ens_chec
     Input("median-checkbox", "value"),
     Input("tabs-round", "value"))
 def spaghetti_plot(location, target, scenario, age_group, n_sample, med_plot, round_tab, band_depth_limit=None):
+    '''
+    :param band_depth_limit: if this parameter is set to a value between 0 and 1, then the plot will create
+    a shaded "envelope" around the trajectories with band depths greater than or equal to band_depth_limit
+    '''
     tic = time.perf_counter()
     fig = draw_spaghetti_plot(scenario, location, target, age_group, n_sample, med_plot, round_tab, band_depth_limit)
     toc = time.perf_counter()
