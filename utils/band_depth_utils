@@ -1,0 +1,92 @@
+import pandas as pd
+import numpy as np
+
+# TODO The following script takes a sample data file from the visualization folder and adds a column for the band depth for each trajectory.
+#  If this were to be run on all sample files (ie in the preprocessing repo),
+#  one can modify the `add_spaghetti_plot_envelope` function (proposed in https://github.com/midas-network/SMHviz_plot/pull/17) to,
+#  instead of generating trajectory band depths while generating the plot, will just reference the sample file, which,
+#  if this script is run in preprocessing, will have the band depths incorporated in them as as column.
+#  This will make generating the visualization much faster than it will be if https://github.com/midas-network/SMHviz_plot/pull/17 is simply merged with no additional modifications.
+
+def generate_bands_constraints_df_for_preprocessing(band_list, date_list, all_traj_df_filtered_to_scenario_model_age_group):
+    c_df = pd.DataFrame({'target_end_date': date_list})
+    for b in band_list:
+        # b represents tuple of trajectories (type_ids)
+        # Filter to only those type IDs
+        b_df = all_traj_df_filtered_to_scenario_model_age_group.loc[all_traj_df_filtered_to_scenario_model_age_group['type_id'].isin(b), :]
+        # Groupby date and get min/max in the value col
+        b_df = b_df.groupby('target_end_date').agg(min=('value', 'min'), max=('value', 'max')).reset_index()
+        b_df = b_df.rename(columns={'min': f'min_{b}', 'max': f'max_{b}'})
+
+        # Add these columns to c_df
+        c_df = c_df.merge(b_df, how='left', on='target_end_date')
+
+    return c_df
+
+
+def generate_band_depth_df_for_preprocessing(df: pd.DataFrame, N=10, j=3) -> pd.DataFrame:
+    """
+    :param df: dataframe for all trajectory data for a given round/target/location (given by file loaded) + scenario/model/age group (filtered in df)
+    :param N: number of bands to test for inclusion (for a given trajectory)
+    :param j: number of randomly sampled trajectories that form a band
+    :returns 2-col df of trajectories + band depths
+    """
+    full_df = pd.DataFrame()
+    scenarios, models = list(df['scenario_id'].unique()), list(df['model_name'].unique())
+    for s in scenarios:
+        for m in models:
+            sub_df = df.loc[(df['scenario_id'] == s) & (df['model_name'] == m),:]
+
+            # Select bands to test for inclusion
+            traj_list = list(sub_df['type_id'].unique())
+
+            selected_bands = []
+
+            for i in range(N):
+                band = np.random.choice(a=traj_list, size=j, replace=False)
+                selected_bands.append(band)
+
+
+            # Get large dataframe with min and a max by epiweek for each band
+            dates = sorted(list(sub_df['target_end_date'].unique()))
+
+            bands_constraints_df = generate_bands_constraints_df_for_preprocessing(selected_bands, dates, sub_df)
+
+            # Merge in constraints
+            sub_df = sub_df.merge(bands_constraints_df, how='left', on='target_end_date')
+            # Determine inclusion in band at each epiweek
+            keep_cols = ['type_id']
+            for b in selected_bands:
+                sub_df[f'in_band_{b}'] = sub_df.apply(lambda x: (x['value'] >= x[f'min_{b}']) & (x['value'] <= x[f'max_{b}']), axis=1)
+                sub_df = sub_df.drop(columns=[f'min_{b}', f'max_{b}'])
+                keep_cols.append(f'in_band_{b}')
+
+            # Drop extraneous cols so future calculation of mean across rows has no extra values
+            sub_df = sub_df[keep_cols]
+            # Per trajectory, get band depth
+            sub_df = sub_df.groupby('type_id').apply(lambda x: x.sum()/len(x)).drop(columns=['type_id'])
+            sub_df['band_depth'] = sub_df.apply(lambda x: x.mean(), axis=1)
+            sub_df = sub_df.reset_index()[['type_id', 'band_depth']]
+
+            # Add back columns for scenario and model
+            sub_df['scenario_id'] = s
+            sub_df['model_name'] = m
+            full_df = pd.concat([full_df, sub_df])
+
+
+    return full_df
+
+if __name__ == '__main__':
+    # Load input data from example_smh
+    # TODO load initialization vars
+    root_dir = ''
+    pathogen = 'covid-19'
+    round = 'round17'
+    target = 'inc hosp'
+    location = 'US'
+    df = pd.read_parquet(f'{root_dir}/example_smh/visualization/data-visualization/{pathogen}/{round}/{target}/{location}/sample/part-0.parquet')
+    # Generate band depth col
+    bd = generate_band_depth_df_for_preprocessing(df)
+    # Merge back into df
+    df = df.merge(bd, on=['scenario_id', 'type_id', 'model_name'], how='left')
+
